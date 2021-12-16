@@ -30,6 +30,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.calcite.sql.SqlKind;
@@ -104,6 +106,8 @@ import org.slf4j.LoggerFactory;
 public abstract class BaseBrokerRequestHandler implements BrokerRequestHandler {
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseBrokerRequestHandler.class);
   private static final String IN_SUBQUERY = "inSubquery";
+  private static final String VIRTUAL_COLUMN_PREFIX = "$";
+
   private static final Expression FALSE = RequestUtils.getLiteralExpression(false);
   private static final Expression TRUE = RequestUtils.getLiteralExpression(true);
 
@@ -1458,9 +1462,24 @@ public abstract class BaseBrokerRequestHandler implements BrokerRequestHandler {
   static void updateColumnNames(String rawTableName, PinotQuery pinotQuery, boolean isCaseInsensitive,
       Map<String, String> columnNameMap) {
     Map<String, String> aliasMap = new HashMap<>();
+    List<Expression> expandedExpressionForStar = null;
     if (pinotQuery != null) {
-      for (Expression expression : pinotQuery.getSelectList()) {
-        fixColumnName(rawTableName, expression, columnNameMap, aliasMap, isCaseInsensitive);
+      Iterator<Expression> selectListIterator = pinotQuery.getSelectListIterator();
+      while (selectListIterator.hasNext()) {
+        Expression expression = selectListIterator.next();
+        // if the identified is * expand to include all the columns except the virtual once's
+        if (expression.getType()  == ExpressionType.IDENTIFIER && expression.getIdentifier().getName().equals("*")) {
+          expandedExpressionForStar = columnNameMap.values().stream()
+              .filter(x -> !x.startsWith(VIRTUAL_COLUMN_PREFIX))
+              .map(x -> RequestUtils.getIdentifierExpression(x))
+              .collect(Collectors.toList());
+          selectListIterator.remove();
+        } else {
+          fixColumnName(rawTableName, expression, columnNameMap, aliasMap, isCaseInsensitive);
+        }
+      }
+      if (expandedExpressionForStar != null) {
+        pinotQuery.getSelectList().addAll(expandedExpressionForStar);
       }
       Expression filterExpression = pinotQuery.getFilterExpression();
       if (filterExpression != null) {

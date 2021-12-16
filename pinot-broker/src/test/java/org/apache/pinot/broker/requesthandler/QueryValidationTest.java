@@ -20,8 +20,11 @@
 package org.apache.pinot.broker.requesthandler;
 
 import com.google.common.collect.ImmutableMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.apache.pinot.common.request.BrokerRequest;
+import org.apache.pinot.common.request.ExpressionType;
 import org.apache.pinot.common.request.PinotQuery;
 import org.apache.pinot.pql.parsers.Pql2Compiler;
 import org.apache.pinot.sql.parsers.CalciteSqlParser;
@@ -179,6 +182,23 @@ public class QueryValidationTest {
     testExistedColumnInSQLQuery("foo", false, ImmutableMap.of("Col1", "Col1", "b", "b", "c", "c", "D", "D"), sql);
     testExistedColumnInSQLQuery("foo", true, ImmutableMap.of("col1", "col1", "b", "b", "c", "c", "d", "d"), sql);
     testExistedColumnInSQLQuery("foo", true, ImmutableMap.of("col1", "COL1", "b", "B", "c", "C"), sql);
+  }
+
+  @Test
+  public void testStarExpressionExpansion() {
+    String sql = "SELECT *,bar='x' FROM foo OPTION(groupByMode=sql,responseFormat=sql)";
+    try {
+      PinotQuery pinotQuery = CalciteSqlParser.compileToPinotQuery(sql);
+      BaseBrokerRequestHandler.updateColumnNames("foo", pinotQuery, false, ImmutableMap.of("bar","bar","baz","baz"));
+      List<String> identifierExpressionName = pinotQuery.getSelectList().stream().
+          filter(expression -> expression.getType() == ExpressionType.IDENTIFIER).
+          map(expression -> expression.getIdentifier().getName()).collect(Collectors.toList());
+      Assert.assertEquals(2, identifierExpressionName.size());
+      Assert.assertTrue(identifierExpressionName.contains("bar"));
+      Assert.assertTrue(identifierExpressionName.contains("baz"));
+    } catch (Exception e) {
+      Assert.fail("Query should have succeed");
+    }
   }
 
   private void testUnsupportedPQLQuery(String query, String errorMessage) {
