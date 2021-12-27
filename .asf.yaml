@@ -17,9 +17,8 @@
 # under the License.
 #
 
-dependencies:
-- name: zookeeper
-  repository: https://charts.bitnami.com/bitnami
-  version: 7.0.0
-digest: sha256:db1ecacbb7016e8c0d9c6642c917461d6190ef88fb9a2a5147b2230e94c64eab
-generated: "2021-12-22T12:04:57.707437-08:00"
+github:
+  description: "Apache Pinot - A realtime distributed OLAP datastore"
+  homepage: https://pinot.apache.org/
+  labels:
+    - java
